@@ -13,8 +13,10 @@ import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.AlertDialogLayout;
+import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.helper.ItemTouchHelper;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
@@ -25,8 +27,12 @@ import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements LoaderManager.LoaderCallbacks<List<Todo>>{
-    private TodoAdapter todoAdapter = null;
+    private RecyclerView todoListView = null;
+    private RecyclerView.Adapter todoAdapter = null;
+    private List<Todo> todoList = null;
     private SubTaskAdapter subTaskAdapter= null;
+
+    public Loader loader = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements LoaderManager.Loa
         ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
         if(networkInfo != null && networkInfo.isConnectedOrConnecting()) {
-            getLoaderManager().initLoader(0, null, this);
+            loader = getLoaderManager().initLoader(0, null, this);
         }
 
         FloatingActionButton fab = findViewById(R.id.add_todo);
@@ -80,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements LoaderManager.Loa
 
     @Override
     public void onLoadFinished(Loader<List<Todo>> loader, List<Todo> data) {
+        todoList = data;
         if(data.isEmpty()) {
             //no data view;
         }
@@ -92,38 +99,45 @@ public class MainActivity extends AppCompatActivity implements LoaderManager.Loa
     }
 
     private void updateUI(final List<Todo> listTodo) {
-        final ListView todoList = findViewById(R.id.todo_list);
+        todoListView = findViewById(R.id.todo_list);
+        todoListView.setHasFixedSize(true);
+        LinearLayoutManager llm = new LinearLayoutManager(this);
+        todoListView.setLayoutManager(llm);
+
         if(todoAdapter == null) {
             todoAdapter = new TodoAdapter(this, listTodo);
         }
-        todoList.setAdapter(todoAdapter);
-        todoList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, final int position, long id) {
-                //Subtask Loader
-                getLoaderManager().initLoader(1, null, new LoaderManager.LoaderCallbacks<List<SubTask>>() {
-                    @Override
-                    public Loader<List<SubTask>> onCreateLoader(int id, Bundle args) {
-                        return new SubTaskLoader(MainActivity.this, "http://localhost:3000/api/todos/" + listTodo.get(position).getId() + "/sub_tasks");
-                    }
+        todoListView.setAdapter(todoAdapter);
 
-                    @Override
-                    public void onLoadFinished(Loader<List<SubTask>> loader, List<SubTask> data) {
-                        if(subTaskAdapter == null) {
-                            subTaskAdapter = new SubTaskAdapter(MainActivity.this, data);
-                        }
-                        ((ListView) findViewById(R.id.subtask_list)).setAdapter(subTaskAdapter);
-                    }
 
-                    @Override
-                    public void onLoaderReset(Loader<List<SubTask>> loader) {
-                        //null
-                    }
-                });
-            }
-        });
 
-        ItemTouchHelper.SimpleCallback simpleCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT|ItemTouchHelper.RIGHT) {
+//        todoListView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+//            @Override
+//            public void onItemClick(AdapterView<?> parent, View view, final int position, long id) {
+//                //Subtask Loader
+//                getLoaderManager().initLoader(1, null, new LoaderManager.LoaderCallbacks<List<SubTask>>() {
+//                    @Override
+//                    public Loader<List<SubTask>> onCreateLoader(int id, Bundle args) {
+//                        return new SubTaskLoader(MainActivity.this, "http://localhost:3000/api/todos/" + listTodo.get(position).getId() + "/sub_tasks");
+//                    }
+//
+//                    @Override
+//                    public void onLoadFinished(Loader<List<SubTask>> loader, List<SubTask> data) {
+//                        if(subTaskAdapter == null) {
+//                            subTaskAdapter = new SubTaskAdapter(MainActivity.this, data);
+//                        }
+//                        ((ListView) findViewById(R.id.subtask_list)).setAdapter(subTaskAdapter);
+//                    }
+//
+//                    @Override
+//                    public void onLoaderReset(Loader<List<SubTask>> loader) {
+//                        //null
+//                    }
+//                });
+//            }
+//        });
+
+        ItemTouchHelper.SimpleCallback simpleCallback = new ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
             @Override
             public boolean onMove(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder, RecyclerView.ViewHolder target) {
                 return false;
@@ -133,13 +147,28 @@ public class MainActivity extends AppCompatActivity implements LoaderManager.Loa
             public void onSwiped(RecyclerView.ViewHolder viewHolder, int direction) {
                 final int position = viewHolder.getAdapterPosition();
 
-                if(direction == (ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT)) {
-                    todoAdapter.remove(todoAdapter.getItem(position));
+                if(direction == ItemTouchHelper.LEFT) {
+                    AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                    builder.setMessage("You are about to delete a todo, are you sure?");
+                    builder.setPositiveButton("Delete", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            todoAdapter.notifyItemRemoved(position);
+                            todoList.remove(position);
+                        }
+                    });
+                    builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            todoAdapter.notifyItemRangeChanged(position, todoAdapter.getItemCount());
+                            return;
+                        }
+                    }).show();
                 }
             }
         };
 
         ItemTouchHelper ith = new ItemTouchHelper(simpleCallback);
-//        ith.attachToRecyclerView(listView);
+        ith.attachToRecyclerView(todoListView);
     }
 }
